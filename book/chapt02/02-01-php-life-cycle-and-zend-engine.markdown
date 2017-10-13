@@ -18,14 +18,31 @@ PHP脚本要执行有很多种方式，通过Web服务器，或者直接在命�
 
 下面几个小节将对一些常见的SAPI实现进行更为深入的介绍。
 
-## 开始和结束
-PHP开始执行以后会经过两个主要的阶段：处理请求之前的开始阶段和请求之后的结束阶段。
-开始阶段有两个过程：第一个过程是模块初始化阶段（MINIT），
-在整个SAPI生命周期内(例如Apache启动以后的整个生命周期内或者命令行程序整个执行过程中)，
-该过程只进行一次。第二个过程是模块激活阶段（RINIT），该过程发生在请求阶段，
-例如通过url请求某个页面，则在每次请求之前都会进行模块激活（RINIT请求开始）。
-例如PHP注册了一些扩展模块，则在MINIT阶段会回调所有模块的MINIT函数。
-模块在这个阶段可以进行一些初始化工作，例如注册常量，定义模块使用的类等等。
+## 启动与终止
+>**NOTE**
+>我认为这一段可能写的不大正确
+
+>可以参考： 
+
+>[Apache启动过程(PHP_MINIT_FUNCTION的调用)][1],
+[1]:http://www.laruence.com/2008/07/24/206.html  
+>
+>[PHP的执行原理/执行流程][2]
+[2]:<http://www.cnblogs.com/hongfei/archive/2012/06/12/2547119.html>  
+>
+>[深入理解Zend SAPIs(Zend SAPI Internals)][3]
+[3]:<http://www.laruence.com/2008/08/12/180.html>
+>
+>[PHP的启动与终止][4]
+[4]:http://www.cunmou.com/phpbook/1.2.md
+>
+
+PHP在启动的时候会调用各个扩展模块的PHP_MINIT_FUNCTION函数（准确来说是宏），
+此函数是各个模块自己定义的用来做初始化工作（例如注册常量，定义模块使用的类）的函数。
+PHP调用MINIT函数的动作称为模块初始化，这个模块初始化动作只进行一次。
+
+SAPI也是模块的一种，在整个SAPI生命周期内(例如Apache启动以后的整个生命周期内或者命令行程序整个执行过程中)，
+MINIT过程也只进行一次。例如php-fpm的MINIT
 模块在实现时可以通过如下宏来实现这些回调函数：
 
 	[c]
@@ -35,9 +52,16 @@ PHP开始执行以后会经过两个主要的阶段：处理请求之前的开�
 		return SUCCESS;	
 	}
 
-请求到达之后PHP初始化执行脚本的基本环境，例如创建一个执行环境，包括保存PHP运行过程中变量名称和值内容的符号表，
-以及当前所有的函数以及类等信息的符号表。然后PHP会调用所有模块的RINIT函数，
-在这个阶段各个模块也可以执行一些相关的操作，模块的RINIT函数和MINIT回调函数类似：
+PHP 脚本执行的开始都是以SAPI接口实现开始的,只是不同的SAPI接口实现会完成各自特定的工作， 例如Apache的mod_php,
+这个SAPI实现需要初始化从Apache获取的一些信息，再将输出内容返回给Apache， 其他的SAPI实现也类似。
+
+而当请求到达的时候，进入模块激活阶段 RINIT.
+例如通过url请求某个页面，则每次请求都会进行模块激活（RINIT请求开始）。
+
+请求到达之后PHP(php解析器fastcgi或者php-fpm)初始化执行脚本的基本环境，例如创建一个执行环境，
+包括保存PHP运行过程中变量名称和值内容的符号表，以及当前所有的函数以及类等信息的符号表。
+然后PHP会调用所有模块的RINIT函数，在这个阶段各个模块也可以执行一些相关的操作。
+模块的RINIT函数和MINIT回调函数类似：
 
 	[c]
 	PHP_RINIT_FUNCTION(myphpextension)
@@ -60,9 +84,55 @@ PHP都将进入结束阶段。和开始阶段对应，结束阶段也分为两�
 
 
 >**NOTE**
+
+>PHP 脚本执行的开始都是以SAPI接口实现开始的,只是不同的SAPI接口实现会完成各自特定的工作， 例如Apache的mod_php,
+>这个SAPI实现需要初始化从Apache获取的一些信息，再将输出内容返回给Apache， 其他的SAPI实现也类似。
+
+> **PHP开发Web应用的基本架构**
+
+>PHP开发Web应用时所有的请求需要指向具体的入口文件。WebServer是一个内容分发者，他接受用户的请求后，如果是请求的是css、js等静态文件，
+>WebServer会找到这个文件，然后发送给浏览器；如果请求的是/index.php，
+>根据配置文件，WebServer知道这个不是静态文件，需要去找PHP解析器来处理，那么他会把这个请求简单处理后交给PHP解析器。
+
+> **PHP处理Web请求流程分析**
+>![PHP处理Web请求流程分析](../images/chapt02/02-01-00-php-web-process-model.png)
+
+>WebServer会依据CGI协议，将请求的Url、数据、Http Header等信息发送给PHP解析器，接下来<font color=green size=3>PHP解析器会解析php.ini文件，初始化执行环境，
+>然后处理请求，再以CGI规定的格式返回处理后的结果，退出进程。</font>web server再把结果返回给浏览器。整个处理过程如上图所示。
+
+> **FastCGI**
+
+>这里说的PHP解析器就是指实现了CGI协议的程序，每次请求到来时他会解析php.ini文件、初始化执行环境等，这就导致PHP解析器性能低下，
+>于是就出现了CGI的改良升级版FastCGI。
+
+>FastCGI是一种语言无关的协议，用来沟通程序(如PHP, Python, Java)和Web服务器(Apache2, Nginx), 理论上任
+>何语言编写的程序都可以通过FastCGI来提供Web服务。它的特点是会动态分配和处理进程给的请求，以达到提高效率的目的，大多数FastCGI实现都会
+>维护一个进程池。FastCGI会先启动一个master进程来解析配置文件，初始化执行环境，然后再fork多个worker进程。当请求到来时，master进程会
+>把这个请求传递给一个worker进程，然后立即接受下一个请求。而且当worker进程不够用时，master可以根据配置预先启动几个worker进程等待；
+>当然空闲worker进程太多时，也会自动关闭，这样就提高了性能，节约了系统资源。整个过程FastCGI扮演着对CGI进程进行管理的角色。
+
+> **PHP-FPM**
+
+>PHP-FPM是一个专门针对PHP语言的，实现了FastCGI协议的程序，它实际上就是一个PHP
+>FastCGI进程管理器，负责管理一个进程池，调用PHP解析器来处理来自Web服务器的请求。PHP-FPM能够对php.ini文件的修改进行平滑过度。
+
+>新建一个helloworld.php文件，写入下列代码
+>   [c]
+>   echo "helloworld,";    
+>   echo "this is my first php script.";
+>   echo phpinfo();
+
+> 配置好WebServer和PHP-FPM等php运行环境后，在浏览器中访问该文件就可以直接得到输出。
+
+
 >想要了解扩展开发的相关内容，请参考第十三章 扩展开发
 
 ### 单进程SAPI生命周期
+>**NOTE**
+>LemonPHP:我的理解，这个流程可能不大正确。因为MINIT是在php启动的时候调用的，以后再调用就是RINIT之后的各个INIT而不会再用MINIT了。
+>---注意我的理解可能不大正确。
+
+
 CLI/CGI模式的PHP属于单进程的SAPI模式。这类的请求在处理一次请求后就关闭。也就是只会经过如下几个环节： 
 开始 - 请求开始 - 请求关闭 - 结束 SAPI接口实现就完成了其生命周期。如图2.1所示：
 

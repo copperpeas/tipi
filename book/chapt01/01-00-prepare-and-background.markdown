@@ -1,19 +1,9 @@
-# 第一章 准备工作和背景知识
+# 1.1 让我们从SAPI开始
 
-**千里之行，始于足下。**
+我们平时接触的最多的是web模式下的php，当然你也肯定知道php还有个CLI模式。
+其实无论哪种模式，PHP的工作原理都是一样的，
+都是作为一种SAPI在运行（Server Application Programming Interface： the API used by PHP to interface with Web Servers）。当我们在终端敲入php这个命令时候，它使用的是"command line sapi"！它就像一个mini的web服务器一样来支持php完成这个请求，请求完成后再重新把控制权交给终端。
 
-在开始进入PHP的内核实现之前，需要做一些准备工作，也需要了解一些背景知识。本章主要涉及PHP源码的获取，
-PHP源码的编译，从而得到我们的调试环境。
+简单来说, SAPI就是PHP和外部环境的代理器。它把外部环境抽象后, 为内部的PHP提供一套固定的, 统一的接口, 使得PHP自身实现能够不受错综复杂的外部环境影响，保持一定的独立性
 
-接下来，我们将简单描述PHP源码的结构以及在\*nix环境和Windows环境下如何阅读源码。
-最后我们介绍在阅读PHP源码过程中经常会遇到的一些语句。
-
-如果你没有接触过PHP，或者对PHP的历史不太了解，我们推荐你先移步[百度百科 PHP](http://baike.baidu.com/view/99.htm)，
-这里有PHP非常详细的历史介绍，它包括PHP的诞生，PHP的发展，PHP的应用，PHP现有三大版本的介绍以及对于PHP6的展望等。
-
->**NOTE**
->目前PHP6已经停止开发了，PHP6的设计初衷是向后不兼容以及Unicode支持等。目前
->很多特性已经在PHP5.3和PHP5.4中实现了:比如5.4中的traits，支持C#类似的getter&setter语法（目前处在实现阶段），
->基本类型的类型提示等。
-
-下面，我们将介绍源码阅读环境的搭建。
+更多内容参看来自Laruence的博客对SAPI的介绍： [深入理解Zend SAPIs](http://www.laruence.com/2008/08/12/180.html) 

@@ -1,97 +1,137 @@
-# 第一节 环境搭建
+# 1.2 PHP的启动与终止
 
-在开始学习PHP实现之前，我们需要一个实验和学习的环境。下面介绍一下怎样在\*nix环境下准备和搭建PHP环境。
+***
+PHP程序的启动可以看作有两个概念上的启动，终止也有两个概念上的终止。
 
->**NOTE**
->(\*nix指的是类Unix环境，比如各种Linux发行版，FreeBSD， OpenSolaris， Mac OS X等操作系统)
+1.其中一个是PHP作为Apache(拿它举例，板砖勿扔)的一个模块的启动与终止，
+这次启动php会初始化一些必要数据，比如与宿主Apache有关的，**并且这些数据是常驻内存的！**
+终止与之相对。
 
-## 1.获取PHP源码
-为了学习PHP的实现，首先需要下载PHP的源代码。下载源码首选是去[PHP官方网站http://php.net/downloads.php](http://php.net/downloads.php)下载，
-如果你喜欢使用svn/git等版本控制软件，也可以使用svn/git来获取最新的源代码。
+2.还有一个概念上的启动就是当Apache分配一个页面请求过来的时候，PHP会有一次启动与终止，这也是我们最常讨论的一种。
+***
+现在我们主要来看一个PHP扩展的生命旅程是怎样走完这四个过程的。
 
-	[bash]
-	# git 官方地址
-	git clone https://git.php.net/repository/php-src.git
-	# 也可以访问github官方镜像
-	git clone git://github.com/php/php-src.git
-	cd php-src && git checkout PHP-5.3 # 签出5.3分支
-	
+在最初的初始化时候，就是PHP随着Apache的启动而诞生在内存里的时候，
+它会把自己所有**已加载扩展**的**MINIT**方法(全称Module Initialization，是由每个模块自己定义的函数。)都执行一遍。
+在这个时间里，扩展可以定义一些自己的常量、类、资源等所有会被用户端的PHP脚本用到的东西。
+但你要记住，这里定义的东东都会**随着Apache常驻内存，可以被所有请求使用，直到Apache卸载掉PHP模块！**
 
-笔者比较喜欢用版本控制软件签出代码，这样做的好处是能看到PHP每次修改的内容及日志信息，
-如果自己修改了其中的某些内容也能快速的查看到，如果你想修复PHP的某个Bug或者提交新功能的话，
-有版本控制也会容易的多，更多信息可以参考附录：[怎样为PHP做贡献][how-to-contribute]。
+内核中预置了PHP_MINIT_FUNCTION宏函数，来帮助我们实现这个功能：
 
->**NOTE**
->目前PHP已经[迁移到Git](http://www.php.net/archive/2012.php#id2012-03-20-1)了，PHP的wiki上有关于
->[迁移到Git的说明](https://wiki.php.net/vcs/gitfaq)，以及[使用Git的流程](https://wiki.php.net/vcs/gitfaq)
->
-><strike>在笔者编写这些内容的时候PHP版本控制是还基于SVN的，上面提到的github镜像地址目前已经没有同步更新了，
->由于把svn同步到git会对系统性能造成明显影响，加上社区还没有就到底是否迁移到git达成一致，所以也就停止了更新。
->目前很多开源软件都开始转向了分布式版本控制系统([DVCS](http://en.wikipedia.org/wiki/Distributed_revision_control))，
->例如Python语言在转向DVCS时对目前的分布式版本控制系统做了一个[详细的对比](http://www.python.org/dev/peps/pep-0374/)，
->如果以前没有接触过，笔者强烈建议试试这些版本控制软件。</strike>现在Github的同步是实时的。
->所以习惯Github的话，基本上可以把Github当做官方版本库了。
+	[php]
+	//抛弃作者那个例子，书才看两页整那样的例子太复杂了!
+	//walu是我扩展的名称
+	int time_of_minit;//在MINIT()中初始化，在每次页面请求中输出，看看是否变化
+	PHP_MINIT_FUNCTION(walu)
+	{
+		time_of_minit=time(NULL);//我们在MINIT启动中对他初始化
+		return SUCCESS;//返回SUCCESS代表正常，返回FALIURE就不会加载这个扩展了。
+	}
 
-## 2.准备编译环境
-在\*nix环境下，需要安装编译构建环境。如果你用的是Ubuntu或者是用apt做为包管理的系统，可以通过如下命令快速安装：
 
-	[bash]
-	sudo apt-get install build-essential
+当一个页面请求到来时候，PHP会迅速的开辟一个新的环境，**并重新扫描自己的各个扩展**，
+遍历执行它们各自的RINIT方法(俗称Request Initialization)，
+这时候一个扩展可能会初始化在本次请求中会使用到的变量等，
+还会初始化等会儿用户端（即PHP脚本）中的变量之类的，内核预置了PHP_RINIT_FUNCTION()这个宏函数来帮我们实现这个功能：
 
-如果你使用的是Mac OS X，则需要安装Xcode。Xcode可以在Mac OS X的安装盘中找到，如果你有Apple ID的话，
-也可以登陆苹果开发者网站<http://developer.apple.com/>下载。
+	[php]
+	int time_of_rinit;//在RINIT里初始化，看看每次页面请求的时候是否变化。
+	PHP_RINIT_FUNCTION(walu)
+	{
+		time_of_rinit=time(NULL);
+		return SUCCESS;
+	}
 
->**NOTE**
->如果你不愿意下载庞大的Xcode，也可以去<https://github.com/kennethreitz/osx-gcc-installer>下载安装包，
->只安装所需的命令行工具。
+>**Tips**
+>这NM还扫描一次各个扩展？这不是很慢很麻烦？
 
-## 3. 编译
-下一步可以开始编译了，本文只简单介绍基本的编译过程，不包含Apache的PHP支持以及Mysql等模块的编译。
-相关资料请自行查阅相关文档。
-如果你是从svn/git签出的代码则需要执行代码根目录的buildconf脚本以生成所需要的构建脚本。
+好了，现在这个页面请求执行的差不多了，可能是顺利的走到了自己文件的最后，
+也可能是出师未捷，半道被用户给die或者exit了，
+这时候PHP便会启动回收程序，收拾这个请求留下的烂摊子。
+它这次会执行所有已加载扩展的RSHUTDOWN（俗称Request Shutdown）方法，
+这时候扩展可以抓紧利用内核中的变量表之类的做一些事情，
+因为一旦PHP把所有扩展的RSHUTDOWN方法执行完，
+便会释放掉这次请求使用过的所有东西，
+包括变量表的所有变量、所有在这次请求中申请的内存等等。
 
-	[bash]
-	cd ~/php-src
-	./buildconf
+内核预置了PHP_RSHUTDOWN_FUNCTION宏函数来帮助我们实现这个功能
 
-执行完以后就可以开始configure了，configure有很多的参数，比如指定安装目录，是否开启相关模块等选项：
+````c
+PHP_RSHUTDOWN_FUNCTION(walu)
+{
+	FILE *fp=fopen("time_rshutdown.txt","a+");
+	fprintf(fp,"%ld\n",time(NULL));//让我们看看是不是每次请求结束都会在这个文件里追加数据
+	fclose(fp);
+	return SUCCESS;
+}
 
->**NOTE**
->有的系统自带的`autoconf`程序版本会有Bug，可能导致扩展的配置无法更新，如果在执行`./buildconf`时
->报错，可以根据出错信息安装合适版本的autoconf工具。
-	
-	[bash]
-	./configure --help # 查看可用参数
+````
+前面该启动的也启动了，该结束的也结束了，现在该Apache老人家歇歇的时候，当Apache通知PHP自己要Stop的时候，PHP便进入MSHUTDOWN（俗称Module Shutdown）阶段。这时候PHP便会给所有扩展下最后通牒，如果哪个扩展还有未了的心愿，就放在自己MSHUTDOWN方法里，这可是最后的机会了，一旦PHP把扩展的MSHUTDOWN执行完，便会进入自毁程序，这里一定要把自己擅自申请的内存给释放掉，否则就杯具了。
 
-为了尽快得到可以测试的环境，我们仅编译一个最精简的PHP。通过执行 `./configure --disable-all`来进行配置。
-以后如果需要其他功能可以重新编译。如果configure命令出现错误，可能是缺少PHP所依赖的库，各个系统的环境可能不一样。
-出现错误可根据出错信息上网搜索。 直到完成configure。configure完成后我们就可以开始编译了。 
+内核中预置了PHP_MSHUTDOWN_FUNCTION宏函数来帮助我们实现这个功能：
 
-	[bash]
-    ./configure --disable-all
-	make
+````c
+PHP_MSHUTDOWN_FUNCTION(walu)
+{
+	FILE *fp=fopen("time_mshutdown.txt","a+");
+	fprintf(fp,"%ld\n",time(NULL));
+	return SUCCESS;
+}
 
-在\*nix下编译过程序的读者应该都熟悉经典的configure make，make install吧。执行make之后是否需要make install就取决于你了。
-如果install的话最好在configure的时候是用prefix参数指定安装目录， 不建议安装到系统目录， 避免和系统原有的PHP版本冲突。
-在make 完以后，在sapi/cli目录里就已经有了php的可以执行文件. 执行一下命令：
+````
+这四个宏都是在walu.c里完成最终实现的，而他们的则是在/main/php.h里被定义的(其实也是调用的别的宏，本节最后我把这几个宏给展开了，供有需要的人查看)。
 
-	[bash]
-	./sapi/cli/php -v
+**好了，现在我们本节内容说完了，下面我们把所有的代码合在一起，并预测一下应该出现的结果：**
+````c
+//这些代码都在walu.c里面，不在.h里
 
--v参数表示输出版本号，如果命令执行完后看到输出php版本信息则说明编译成功。
-如果是make install的话可以执行$prefix/bin/php这个路径的php。
-当然如果是安装在系统目录或者你的prefix目录在$PATH环境变量里的话，直接执行php就行了。
+int time_of_minit;//在MINIT中初始化，在每次页面请求中输出，看看是否变化
+PHP_MINIT_FUNCTION(walu)
+{
+	time_of_minit=time(NULL);//我们在MINIT启动中对他初始化
+	return SUCCESS;
+}
 
->**NOTE**
->在只进行``make``而不``make install``时，只是编译为可执行二进制文件，所以在终端下执行的php-cli所在路径就是``php-src/sapi/cli/php``。
+int time_of_rinit;//在RINIT里初始化，看看每次页面请求的时候是否变化。
+PHP_RINIT_FUNCTION(walu)
+{
+	time_of_rinit=time(NULL);
+	return SUCCESS;
+}
 
-后续的学习中可能会需要重复configure make 或者 make && make install 这几个步骤。
+PHP_RSHUTDOWN_FUNCTION(walu)
+{
+	FILE *fp=fopen("/cnan/www/erzha/time_rshutdown.txt","a+");//请确保文件可写，否则apache会莫名崩溃
+	fprintf(fp,"%d\n",time(NULL));//让我们看看是不是每次请求结束都会在这个文件里追加数据
+	fclose(fp);
+	return SUCCESS;
+}
 
-## Windows环境的编译
-Windows环境下的编译可以参考官方Wiki的说明：<https://wiki.php.net/internals/windows/stepbystepbuild>
+PHP_MSHUTDOWN_FUNCTION(walu)
+{
+	FILE *fp=fopen("/cnan/www/erzha/time_mshutdown.txt","a+");//请确保文件可写，否则apache会莫名崩溃
+	fprintf(fp,"%d\n",time(NULL));
+	return SUCCESS;
+}
 
-## 推荐书籍和参考
-*  [Gnu Make中文书册](https://github.com/loverszhaokai/GNUMakeManual_CN)
-* 《Autotools A Practioner's Guide》
+//我们在页面里输出time_of_minit和time_of_rinit的值
+PHP_FUNCTION(walu_test)
+{
+	php_printf("%d&lt;br /&gt;",time_of_minit);
+	php_printf("%d&lt;br /&gt;",time_of_rinit);
+	return;
+}
 
-[how-to-contribute]: ?p=D-how-to-contribute
+
+````
+
+ * time_of_minit的值每次请求都不变。
+ * time_of_rinit的值每次请求都改变。
+ * 每次页面请求结束都会往time_rshutdown.txt中写入数据。
+ * 只有在apache结束后time_mshutdown.txt才写入有数据。
+
+> 多谢 [闸北陆小洪](http://weibo.com/showz) 指出的有关time_of_rinit的笔误。
+
+上面便是PHP中典型的启动-终止模型，实际情况可能因为模式不同而有所变化，
+到底PHP的启动-终止会有多少种不同变化方式，请看下一节。
+
